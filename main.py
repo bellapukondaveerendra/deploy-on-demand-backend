@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException,File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
@@ -12,6 +12,8 @@ import socket
 import psutil
 import logging
 import requests
+from cryptography.fernet import Fernet
+import time
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -20,7 +22,7 @@ ngrok.set_auth_token("2t8s9yJ3vJsfNADlpRZfYn2IwnO_6wCav8TxywmmzT6pAWTpk")
 # Enable CORS (Allow frontend to talk to backend)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Allow only frontend URL
+    allow_origins=["http://localhost:3000","*"],  # Allow only frontend URL
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
@@ -28,12 +30,30 @@ app.add_middleware(
 
 # Directory where repos will be cloned
 CLONE_DIR = "cloned_repos"
+TEMP_ENV_FOLDER = "/home/ubuntu/deploy-on-demand/temp_envs"
 
 # Ensure the directory exists
 os.makedirs(CLONE_DIR, exist_ok=True)
+os.makedirs(TEMP_ENV_FOLDER, exist_ok=True)
+
+# Generate a key for encryption
+ENCRYPTION_KEY = Fernet.generate_key()
+cipher = Fernet(ENCRYPTION_KEY)
 
 class RepoRequest(BaseModel):
     repo_url: str
+    is_env_given: bool = False
+
+def encrypt_env(repo_id, env_data):
+    """Encrypts the .env file contents and stores it temporarily"""
+    # encrypted_data = cipher.encrypt(env_data.encode())
+    encrypted_data = env_data
+    env_path = os.path.join(TEMP_ENV_FOLDER, f"{repo_id}.env")
+
+    with open(env_path, "wb") as f:
+        f.write(encrypted_data)
+    
+    return env_path
 
 
 @app.get("/")
@@ -42,9 +62,12 @@ def home():
 
 
 @app.post("/deploy")
-async def deploy_repo(request: RepoRequest):
+def deploy_repo(
+    repo_url: str = Form(...),
+    is_env_given: bool = Form(False),
+    env_file: UploadFile = File(None)
+):
     """Clones a GitHub repo and serves static files for an HTML project."""
-    repo_url = request.repo_url
 
     # Validate URL
     if not repo_url.startswith("https://github.com/"):
@@ -56,7 +79,13 @@ async def deploy_repo(request: RepoRequest):
     public_url = ""
     try:
         # Clone the repo
-        git.Repo.clone_from(repo_url, repo_path)
+        git.Repo.clone_from(repo_url, repo_path, branch='master') #, branch='master_v1'
+
+        # Handle .env file if provided
+        env_path = None
+        if is_env_given and env_file:
+            env_data = env_file.read()
+            env_path = encrypt_env(repo_id, env_data)
 
         # Check if index.html exists
         if os.path.exists(os.path.join(repo_path, "index.html")):
@@ -67,7 +96,7 @@ async def deploy_repo(request: RepoRequest):
             public_url = f"http://{aws_ip}/deployments/{repo_id}/index.html"
         
         elif os.path.exists(os.path.join(repo_path, "app.py")):
-            public_url = deploy_flask_in_docker(repo_path, repo_id)
+            public_url = deploy_flask_in_docker(repo_path, repo_id, env_path)
 
         return {"message": "Deployment successful", "deploy_id": repo_id, "public_url": public_url}
 
@@ -75,7 +104,7 @@ async def deploy_repo(request: RepoRequest):
         logger.debug(f"deploy_repo Error is,", e)
         raise HTTPException(status_code=500, detail=str(e))
 
-def deploy_flask_in_docker(repo_path, repo_id):
+def deploy_flask_in_docker(repo_path, repo_id, env_path):
     try:
         """Generates a Dockerfile and deploys Flask inside a container, then configures Nginx."""
         
@@ -85,7 +114,7 @@ def deploy_flask_in_docker(repo_path, repo_id):
             raise HTTPException(status_code=400, detail="Missing requirements.txt. Please add it.")
 
         # Generate a Dockerfile inside the repo folder
-        dockerfile_content = f"""FROM python:3.10.6
+        dockerfile_content = f"""FROM python:3.11
         WORKDIR /app
         COPY . /app
         RUN pip install --no-cache-dir -r requirements.txt
@@ -108,14 +137,42 @@ def deploy_flask_in_docker(repo_path, repo_id):
 
         # Define container name
         container_name = f"deploy_{repo_id}"
-
-        logger.debug(f"repo_path",repo_path)
         try:
+            logger.debug("🔥 Starting Docker Build with Real-Time Logs...")  # Debug Info
             # 🔥 Fix: Run Docker Build & Run Commands Inside `repo_path`
             logger.debug("🔥 Debug: Running Docker Build Command")  # Debug Info
             subprocess.run(["docker", "build", "-t", container_name, "."], cwd=repo_path, check=True)  # ✅ Corrected
             logger.debug(f"🔥 Debug: Running Docker Run Command docker run -d -p {port}:5000 --name ${container_name} ${container_name}")  # Debug Info
-            subprocess.run(["docker", "run", "-d", "-p", f"{port}:5000", "--name", container_name, container_name], check=True)
+
+            docker_cmd = ["docker", "run", "-d", "-p", f"{port}:5000", "--name", container_name]
+            if env_path:
+                print("env_pathenv_pathenv_pathenv_path",env_path)
+                docker_cmd.extend(["--env-file", env_path])
+            docker_cmd.append(container_name)
+
+            # ✅ Real-Time Logs for Docker Build
+            process = subprocess.Popen(
+                ["docker", "build", "-t", container_name, "."],
+                cwd=repo_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            # Display Build-Time Logs in Console (Optional - for Debugging)
+            for line in iter(process.stdout.readline, ''):
+                logger.debug(f"[BUILD-LOG] {line.strip()}")
+            
+            return_code = process.wait()
+            if return_code != 0:
+                raise HTTPException(status_code=500, detail="❌ Docker Build Failed. Please check the logs.")
+
+            print("Running Docker Command after Appending ::",docker_cmd)
+            logger.debug(f"🔥 Debug: Running Docker Run Command {docker_cmd}")
+            subprocess.run(docker_cmd, check=True)
+
+            # Delete temp env file
+            # if env_path:
+                # os.remove(env_path)
         except subprocess.CalledProcessError as e:
             raise HTTPException(status_code=500, detail=f"Docker build/run failed: {e}")
         # Configure Nginx
@@ -166,7 +223,7 @@ def configure_nginx_for_docker_windows(repo_id, port):
     # 🔥 Fix: Use PowerShell to restart Nginx with Administrator privileges
     try:
         logger.debug("🔥 Restarting Nginx with Admin Privileges...")
-        subprocess.run(["powershell", "Start-Process", "C:/Users/veeru/nginx-1.26.3/nginx.exe", "-Verb", "runAs"], check=True)
+        subprocess.run(["powershell", "Start-Process", "C:/Users/veeru/nginx/nginx.exe", "-Verb", "runAs"], check=True)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Nginx restart failed: {e}")
 
@@ -186,7 +243,8 @@ def configure_nginx_for_docker(repo_id, port):
 
 
     # ✅ Correct path for Nginx deployments config on Ubuntu
-    nginx_conf_path = "/etc/nginx/conf.d/deployments_locations.conf"
+    # nginx_conf_path = "/etc/nginx/conf.d/deployments_locations.conf"
+    nginx_conf_path = "C:/Users/veeru/nginx/conf/deployments.conf"
 
     # Append new deployment rule
     with open(nginx_conf_path, "a") as f:
@@ -194,9 +252,36 @@ def configure_nginx_for_docker(repo_id, port):
 
     # ✅ Restart Nginx properly on Linux
     try:
+        NGINX_PATH = r"C:/Users/veeru/nginx"
         logger.debug("🔥 Restarting Nginx...")
-        subprocess.run(["sudo", "nginx", "-t"], check=True)  # Validate config
-        subprocess.run(["sudo", "systemctl", "restart", "nginx"], check=True)
+        # subprocess.run(["sudo", "nginx", "-t"], check=True)  # Validate config
+        # subprocess.run(["sudo", "systemctl", "restart", "nginx"], check=True)
+        # subprocess.run(["taskkill", "/IM", "nginx.exe", "/F"], check=True, shell=True)
+
+        for proc in psutil.process_iter(['pid', 'name', 'exe']):
+            try:
+                if proc.info['name'] == "nginx.exe" and proc.info['exe'] == NGINX_PATH:
+                    logger.debug(f"🛑 Stopping Nginx (PID: {proc.info['pid']})...")
+                    subprocess.run(["taskkill", "/PID", str(proc.info['pid']), "/F"], check=True, shell=True)
+                    time.sleep(2)  # Ensure process fully stops
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+        
+        logger.debug("🚀 Stopping any existing Nginx instances...")
+        # subprocess.run([rf"{NGINX_PATH}\nginx.exe", "-s", "stop"],
+        #                check=True,
+        #     shell=True,
+        #     cwd=rf"{NGINX_PATH}"
+        # )
+        time.sleep(2)  # Wait 2 seconds to ensure the process stops
+        # ✅ Start Nginx again
+        logger.debug("🚀 Starting Nginx...")
+        subprocess.run(
+            [rf"{NGINX_PATH}\nginx.exe", "-c", rf"{NGINX_PATH}\conf\nginx.conf"],
+            check=True,
+            shell=True,
+            cwd=rf"{NGINX_PATH}"  # 🔹 This ensures Nginx runs from its correct directory
+        )
         logger.debug("✅ Nginx restarted successfully!")
     except Exception as e:
         logger.error(f"❌ Nginx restart failed: {e}")
