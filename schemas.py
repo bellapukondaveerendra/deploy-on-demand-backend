@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -33,11 +33,11 @@ class DeploymentOut(BaseModel):
     status: str
     is_backend_service: bool
     is_env_given: bool
-    timestamp: datetime
+    timestamp: str  # ISO string for JSON serialisation
 
 
 class DeploymentHistoryResponse(BaseModel):
-    deployments: list[DeploymentOut]
+    deployments: List[DeploymentOut]
     reached_limit: bool
     total: int
 
@@ -56,4 +56,4 @@ class ScheduleRequest(BaseModel):
     deployment_name: str
     is_backend_service: bool = False
     is_env_given: bool = False
-    scheduled_time: datetime  # ISO string from frontend
+    scheduled_time: datetime
