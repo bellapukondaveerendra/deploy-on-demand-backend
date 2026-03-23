@@ -54,7 +54,7 @@ def create_paypal_order(
     """
     price    = body.get("price", "25")
     order_id = f"FAKE-ORDER-{uuid.uuid4()}"
-    logger.info(f"💳 PayPal order created: {order_id} for ${price}")
+    logger.info(f"PayPal order created: {order_id} for ${price}")
     return {"order_id": order_id, "price": price}
 
 
@@ -85,5 +85,5 @@ def capture_paypal_payment(
         },
         upsert=True,
     )
-    logger.info(f"✅ Subscription activated for {user_id}")
+    logger.info(f"Subscription activated for {user_id}")
     return {"message": "Payment captured. Subscription activated.", "order_id": order_id}

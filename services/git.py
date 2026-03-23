@@ -26,7 +26,7 @@ def clone_repo(repo_url: str, dest_path: str, branch: str) -> None:
     if repo_url.startswith("git@github.com:"):
         repo_url = repo_url.replace("git@github.com:", "https://github.com/")
 
-    logger.info(f"📥 Cloning {repo_url} (branch: {branch}) → {dest_path}")
+    logger.info(f"Cloning {repo_url} (branch: {branch}) → {dest_path}")
     try:
         gitpython.Repo.clone_from(repo_url, dest_path, branch=branch)
     except gitpython.GitCommandError as exc:

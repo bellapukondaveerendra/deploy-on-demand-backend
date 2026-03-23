@@ -30,6 +30,8 @@ from services.docker import (
 from services.git import clone_repo
 from services.ngrok import close_tunnel
 from services.storage import CLONE_DIR, cleanup_deployment, save_env_file
+from dotenv import load_dotenv
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Deployments"])
@@ -51,6 +53,8 @@ def _check_deployment_limit(user_id: str) -> bool:
     count = deployments_collection.count_documents(
         {"user_id": user_id, "status": {"$in": ["SUCCESS", "RUNNING"]}}
     )
+    print(f"User {user_id} has {count} active deployments")
+    print(f"Free tier limit is {os.getenv('FREE_TIER_LIMIT', '3')}")
     return count >= FREE_TIER_LIMIT
 
 
@@ -77,6 +81,7 @@ def deploy_repo(
     user_id = current_user["_id"]
 
     if _check_deployment_limit(user_id):
+        print(f"Free tier limit reached for user {user_id}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Free tier limit reached. Upgrade to Premium for unlimited deployments.",
@@ -154,7 +159,7 @@ def deploy_repo(
             )
 
         _set_status(repo_id, "SUCCESS", public_url)
-        logger.info(f"✅ Deployment {repo_id} succeeded — {public_url}")
+        logger.info(f"Deployment {repo_id} succeeded — {public_url}")
         return {"message": "Deployment successful", "deploy_id": repo_id, "public_url": public_url}
 
     except HTTPException:
@@ -162,7 +167,7 @@ def deploy_repo(
         raise
     except Exception as exc:
         _set_status(repo_id, "FAILED")
-        logger.error(f"❌ Deployment {repo_id} failed: {exc}")
+        logger.error(f"Deployment {repo_id} failed: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
 
 
@@ -206,7 +211,7 @@ def delete_deployment(repo_id: str, current_user: dict = Depends(get_current_use
     cleanup_deployment(repo_id)    # cloned repo, .env file, static files
 
     deployments_collection.delete_one({"repo_id": repo_id})
-    logger.info(f"🗑  Deployment {repo_id} deleted by {user_id}")
+    logger.info(f"Deployment {repo_id} deleted by {user_id}")
     return {"message": "Deployment deleted successfully"}
 
 

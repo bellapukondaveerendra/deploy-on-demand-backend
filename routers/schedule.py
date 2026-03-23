@@ -79,7 +79,7 @@ def schedule_deployment(
         "created_at":        _utcnow(),
     })
 
-    logger.info(f"📅 Deployment scheduled for {scheduled_dt} by {user_id}")
+    logger.info(f"Deployment scheduled for {scheduled_dt} by {user_id}")
     return {
         "message":        "Deployment scheduled successfully",
         "schedule_id":    schedule_id,

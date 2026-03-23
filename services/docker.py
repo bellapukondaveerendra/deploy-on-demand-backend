@@ -67,7 +67,8 @@ CMD ["sh", "-c", "{start_cmd}"]
 
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
-
+# Finds an available free TCP port dynamically by asking the OS to assign one.
+# Useful for running multiple containers/services concurrently without port conflicts.
 def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("", 0))
@@ -89,10 +90,10 @@ def _run_cmd(cmd: list[str], cwd: Optional[str] = None, step: str = "") -> str:
     )
     output = result.stdout or ""
     if result.returncode != 0:
-        logger.error(f"❌ {step} failed (exit {result.returncode}):\n{output}")
+        logger.error(f"{step} failed (exit {result.returncode}):\n{output}")
         tail = "\n".join(output.strip().splitlines()[-20:])
         raise HTTPException(status_code=500, detail=f"{step} failed:\n{tail}")
-    logger.debug(f"✅ {step}:\n{output[-800:]}")
+    logger.debug(f"{step}:\n{output[-800:]}")
     return output
 
 
@@ -102,9 +103,9 @@ def _write_dockerfile(repo_path: str, content: str) -> None:
     if not os.path.exists(path):
         with open(path, "w") as fh:
             fh.write(content)
-        logger.info(f"📄 Wrote generated Dockerfile to {path}")
+        logger.info(f"Wrote generated Dockerfile to {path}")
     else:
-        logger.info(f"📄 Using existing Dockerfile in repo")
+        logger.info(f"Using existing Dockerfile in repo")
 
 
 def _build_and_run(
@@ -138,7 +139,7 @@ def _build_and_run(
     run_cmd.append(image_name)
 
     _run_cmd(run_cmd, step=f"docker run ({container_name})")
-    logger.info(f"🐳 Container {container_name} running on port {host_port}")
+    logger.info(f"Container {container_name} running on port {host_port}")
 
 
 # ── Entry-point detection ──────────────────────────────────────────────────────
@@ -154,13 +155,13 @@ def detect_python_entry(repo_path: str) -> str:
     ]
     for name in candidates:
         if os.path.exists(os.path.join(repo_path, name)):
-            logger.info(f"🔍 Auto-detected Python entry: {name}")
+            logger.info(f"Auto-detected Python entry: {name}")
             return name
 
     # Last resort: any .py file at root level
     py_files = sorted(f for f in os.listdir(repo_path) if f.endswith(".py"))
     if py_files:
-        logger.warning(f"⚠️  No standard entry found — using first .py: {py_files[0]}")
+        logger.warning(f"No standard entry found — using first .py: {py_files[0]}")
         return py_files[0]
 
     raise HTTPException(
@@ -240,4 +241,4 @@ def stop_and_remove(repo_id: str) -> None:
         ["docker", "rmi", "-f", image_name],
     ):
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    logger.info(f"🗑  Docker resources for {repo_id} removed")
+    logger.info(f"Docker resources for {repo_id} removed")

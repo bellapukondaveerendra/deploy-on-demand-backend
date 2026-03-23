@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # ── Startup ──
     init_indexes()
-    logger.info("✅ MongoDB indexes initialised")
+    logger.info("MongoDB indexes initialised")
 
     init_ngrok()
 

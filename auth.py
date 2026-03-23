@@ -7,8 +7,10 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from database import users_collection
 import os
 
+from dotenv import load_dotenv
+load_dotenv()
 # ── Config ──────────────────────────────────────────────────────────────────
-SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-change-in-production")
+SECRET_KEY = os.getenv("SECRET_KEY", "VeeruStarkSecretKey")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 

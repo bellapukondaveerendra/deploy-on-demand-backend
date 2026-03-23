@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+from dotenv import load_dotenv
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,7 @@ def save_env_file(repo_id: str, env_data: bytes) -> str:
     env_path = os.path.join(TEMP_ENV_FOLDER, f"{repo_id}.env")
     with open(env_path, "wb") as fh:
         fh.write(env_data)
-    logger.info(f"💾 Saved .env for {repo_id} → {env_path}")
+    logger.info(f"Saved .env for {repo_id} → {env_path}")
     return env_path
 
 
@@ -39,7 +41,7 @@ def cleanup_deployment(repo_id: str) -> None:
     for path in paths:
         if os.path.isdir(path):
             shutil.rmtree(path, ignore_errors=True)
-            logger.info(f"🗑  Removed directory: {path}")
+            logger.info(f"Removed directory: {path}")
         elif os.path.isfile(path):
             os.remove(path)
-            logger.info(f"🗑  Removed file: {path}")
+            logger.info(f"Removed file: {path}")

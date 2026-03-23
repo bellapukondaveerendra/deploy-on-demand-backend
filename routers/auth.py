@@ -47,7 +47,7 @@ def signup(body: SignupRequest):
             "created_at": _utcnow(),
         }
     )
-    logger.info(f"✅ New user registered: {body.email}")
+    logger.info(f"New user registered: {body.email}")
     return TokenResponse(
         access_token=create_access_token({"sub": user_id}),
         user_id=user_id,
@@ -64,7 +64,7 @@ def login(body: LoginRequest):
     if not verify_password(body.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Incorrect password")
 
-    logger.info(f"✅ Login: {body.email}")
+    logger.info(f"Login: {body.email}")
     return TokenResponse(
         access_token=create_access_token({"sub": user["_id"]}),
         user_id=user["_id"],
